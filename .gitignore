@@ -53,3 +53,5 @@ results/*.npz
 
 # ---------- 6. 工作环境 ----------
 .workbuddy/
+
+release/
