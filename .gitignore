@@ -1,7 +1,13 @@
 # =============================================================
 # 无人机 CFD 项目 —— Git 忽略规则
-# 原则：只提交「能重新跑出结果的源码 + 交付物」，
-#       忽略「体积大 / 可由脚本重算 / 运行残留」的三类文件。
+# 目录约定：
+#   data/      唯一不可再生的输入（入库）
+#   scripts/   全部源码（入库）
+#   results/   交付物：图片 / 报表 / 系数（入库）
+#   artifacts/ 生成的几何 · 网格 · case（忽略，可重算）
+#   work/      Fluent 启动临时目录（忽略）
+#   logs/      运行日志（忽略）
+# 原则：只提交「能重新跑出结果的源码 + 交付物」。
 # 注意：gitignore 不支持行尾注释，注释必须独占一行。
 # =============================================================
 
@@ -12,8 +18,14 @@ __pycache__/
 .venv/
 venv/
 
-# ---------- 2. 大体量二进制：网格 / case / data ----------
-# 单个文件 37~100 MB，全部可由 mesh_half.py / final_solve.py 重算
+# ---------- 2. 生成物根目录 ----------
+# artifacts/geometry  aircraft_solid.stl、fluid_domain.stl（3 + 16 MB）
+# artifacts/mesh      *.msh.h5（79 + 37 MB）
+# artifacts/cases     *.cas.h5 / *.dat.h5（8 个，约 409 MB）
+# 全部可由 scripts/01_geometry 与 scripts/02_mesh、03_solve 重算
+artifacts/
+
+# 兜底：万一生成物被写到别处
 *.msh.h5
 *.msh
 *.cas.h5
@@ -21,37 +33,23 @@ venv/
 *.dat.h5
 *.dat
 
-# ---------- 3. 派生几何 ----------
-# 均可由脚本重生成；只保留原始输入 1.stl
-fluid_domain.stl
-aircraft_solid.stl
-aircraft_solid_dec.stl
-half_domain.stl
-dom_ASIS.stl
-dom_REVERSED.stl
-
-# ---------- 4. 中间数据 ----------
-# extract_post.py 产出，7 MB ×4，可重算
-results/*.npz
-
-# ---------- 5. Fluent / Ansys 运行残留 ----------
-# Watertight 网格工作流缓存（7 个目录，约 32 MB）
+# ---------- 3. Fluent / Ansys 运行残留 ----------
+# PyFluent 启动工作目录（FM_* 临时、*_workflow_files 缓存）
+work/
 *_workflow_files/
-# Fluent 启动工作目录（FM_bigbrain_* 临时目录，约 100 MB）
-mesh_work/
 # Fluent 自动生成的清理批处理
 cleanup-fluent-*.bat
 # transcript / journal
 *.trn
 *.jou
 
-# ---------- 6. 日志（全部为调试留痕）----------
+# ---------- 4. 日志 ----------
+logs/
 *.log
 
-# ---------- 7. 备份 / 临时脚本 ----------
-# results/ 的完整备份，内容重复
-results_v1_noprism/
-# 渲染卡死定位用的一次性脚本
-_t.py
+# ---------- 5. 中间数据 ----------
+# extract_post.py 产出，7 MB ×4，可重算
+results/*.npz
 
+# ---------- 6. 工作环境 ----------
 .workbuddy/
