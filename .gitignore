@@ -1,0 +1,57 @@
+# =============================================================
+# 无人机 CFD 项目 —— Git 忽略规则
+# 原则：只提交「能重新跑出结果的源码 + 交付物」，
+#       忽略「体积大 / 可由脚本重算 / 运行残留」的三类文件。
+# 注意：gitignore 不支持行尾注释，注释必须独占一行。
+# =============================================================
+
+# ---------- 1. Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------- 2. 大体量二进制：网格 / case / data ----------
+# 单个文件 37~100 MB，全部可由 mesh_half.py / final_solve.py 重算
+*.msh.h5
+*.msh
+*.cas.h5
+*.cas
+*.dat.h5
+*.dat
+
+# ---------- 3. 派生几何 ----------
+# 均可由脚本重生成；只保留原始输入 1.stl
+fluid_domain.stl
+aircraft_solid.stl
+aircraft_solid_dec.stl
+half_domain.stl
+dom_ASIS.stl
+dom_REVERSED.stl
+
+# ---------- 4. 中间数据 ----------
+# extract_post.py 产出，7 MB ×4，可重算
+results/*.npz
+
+# ---------- 5. Fluent / Ansys 运行残留 ----------
+# Watertight 网格工作流缓存（7 个目录，约 32 MB）
+*_workflow_files/
+# Fluent 启动工作目录（FM_bigbrain_* 临时目录，约 100 MB）
+mesh_work/
+# Fluent 自动生成的清理批处理
+cleanup-fluent-*.bat
+# transcript / journal
+*.trn
+*.jou
+
+# ---------- 6. 日志（全部为调试留痕）----------
+*.log
+
+# ---------- 7. 备份 / 临时脚本 ----------
+# results/ 的完整备份，内容重复
+results_v1_noprism/
+# 渲染卡死定位用的一次性脚本
+_t.py
+
+.workbuddy/
