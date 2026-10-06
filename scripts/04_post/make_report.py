@@ -5,7 +5,8 @@ import html
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
-OUT = os.path.join(BASE, "results")
+OUT = os.environ.get("RESULTS_DIR", os.path.join(BASE, "results"))
+os.makedirs(OUT, exist_ok=True)
 
 FORCES = None
 p = os.path.join(OUT, "forces.json")

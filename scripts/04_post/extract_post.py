@@ -13,12 +13,15 @@ from ansys.fluent.core.fields.field_data_interfaces import (
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
-OUT = os.path.join(BASE, "results")
+OUT = os.environ.get("RESULTS_DIR", os.path.join(BASE, "results"))
 os.makedirs(OUT, exist_ok=True)
 
 AOAS = [float(a) for a in os.environ.get("AOAS", "0,4,8,12").split(",")]
+CASE_FMT = os.environ.get("CASE_FMT",
+                          os.path.join(BASE, "artifacts/cases/final_aoa%d.cas.h5"))
 WALL = "aircraft-fluid_box"
-STATIONS = [8.0, 15.0, 24.0, 34.0, 48.0]
+STATIONS = [float(x) for x in
+            os.environ.get("STATIONS", "8,15,24,34,48").split(",")]
 
 
 def make_planes(s):
@@ -139,7 +142,7 @@ def main():
         fd = s.fields.field_data
 
     for aoa in AOAS:
-        cf = os.path.join(BASE, "artifacts/cases/final_aoa%d.cas.h5" % int(aoa))
+        cf = CASE_FMT % int(aoa)
         if not os.path.exists(cf):
             print("missing " + cf)
             continue

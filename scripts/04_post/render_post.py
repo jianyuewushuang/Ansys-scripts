@@ -12,16 +12,21 @@ import pyvista as pv
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
-OUT = os.path.join(BASE, "results")
+OUT = os.environ.get("RESULTS_DIR", os.path.join(BASE, "results"))
 os.makedirs(OUT, exist_ok=True)
 
-P_INF = 54019.89
-Q_INF = 1325.016
-V_INF = 60.0
-SREF = 65.3375
-LREF = 4.1996
-AOAS = [0, 4, 8, 12]
-STATIONS = [8, 15, 24, 34, 48]
+def _f(key, default):
+    return float(os.environ.get(key, default))
+
+
+P_INF = _f("P_INF", 54019.89)      # 远场静压 [Pa]
+Q_INF = _f("Q_INF", 1325.016)      # 动压 [Pa]
+V_INF = _f("V_INF", 60.0)          # 来流速度 [m/s]
+SREF = _f("SREF", 65.3375)         # 参考面积 [m2]
+LREF = _f("LREF", 4.1996)          # MAC [m]
+AOAS = [int(float(x)) for x in os.environ.get("AOAS", "0,4,8,12").split(",")]
+STATIONS = [int(float(x)) for x in
+            os.environ.get("STATIONS", "8,15,24,34,48").split(",")]
 
 CMP = "RdBu_r"      # pressure: red = high (stagnation), blue = low
 CMV = "viridis"

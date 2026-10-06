@@ -13,8 +13,8 @@ from skimage import measure
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
-SRC = BASE + "/data/1.stl"
-OUT = BASE + "/artifacts/geometry/aircraft_solid.stl"
+SRC = os.environ.get("INPUT_STL", BASE + "/data/1.stl")
+OUT = os.environ.get("OUT", BASE + "/artifacts/geometry/aircraft_solid.stl")
 H = float(os.environ.get("VOXEL", 0.05))     # voxel size, m
 
 txt = open(SRC, "r", errors="ignore").read()

@@ -11,15 +11,29 @@ from ansys.fluent.core import launch_fluent
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
-OUT = os.path.join(BASE, "results"); os.makedirs(OUT, exist_ok=True)
+OUT = os.environ.get("RESULTS_DIR", os.path.join(BASE, "results")); os.makedirs(OUT, exist_ok=True)
 MSH = os.environ.get("MSH", os.path.join(BASE, "artifacts/mesh/aircraft_mesh.msh.h5"))
 CASE_FMT = os.environ.get("CASE_FMT", os.path.join(BASE, "artifacts/cases/final_aoa%d.cas.h5"))
 
-T_INF = 255.65; P_INF = 54019.89; RHO = 0.73612; MU = 1.628e-5
-V_INF = 60.0; A_INF = 320.529; MA = V_INF / A_INF
-SREF = 65.3375; LREF = 4.1996; BREF = 23.6443
-QINF = 0.5 * RHO * V_INF ** 2
-MC = [7.9319, 0.0, 0.0]
+def _f(key, default):
+    return float(os.environ.get(key, default))
+
+
+# ---- 来流状态（5 km ISA 默认值，可由 config.py / 环境变量覆盖）----
+T_INF = _f("T_INF", 255.65)        # 静温 [K]
+P_INF = _f("P_INF", 54019.89)      # 静压 [Pa]
+RHO = _f("RHO", 0.73612)           # 密度 [kg/m3]
+MU = _f("MU", 1.628e-5)            # 动力粘度 [Pa.s]
+V_INF = _f("V_INF", 60.0)          # 来流速度 [m/s]
+A_INF = _f("A_INF", 320.529)       # 声速 [m/s]
+MA = V_INF / A_INF
+
+# ---- 参考量（由 config.py 传入，保证与几何脚本一致）----
+SREF = _f("SREF", 65.3375)         # 参考面积 [m2]
+LREF = _f("LREF", 4.1996)          # 参考长度 = MAC [m]
+BREF = _f("BREF", 23.6443)         # 翼展 [m]
+QINF = 0.5 * RHO * V_INF ** 2      # 动压 [Pa]
+MC = [float(x) for x in os.environ.get("MC", "7.9319,0,0").split(",")]  # 取矩中心
 
 AOAS = [float(x) for x in os.environ.get("AOAS", "0,4,8,12").split(",")]
 NPROC = int(os.environ.get("NPROC", 4))

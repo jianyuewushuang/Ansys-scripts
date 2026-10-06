@@ -12,12 +12,20 @@ import numpy as np, struct, os
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
 SRC = os.environ.get("SRC", BASE + "/artifacts/geometry/aircraft_solid.stl")
-OUT = BASE + "/artifacts/geometry/fluid_domain.stl"
+OUT = os.environ.get("OUT", BASE + "/artifacts/geometry/fluid_domain.stl")
 
-XMIN, XMAX = -36.0, 84.0
-YMIN, YMAX = -33.0, 33.0
-ZMIN, ZMAX = -20.0, 20.0
-BOX_EDGE = float(os.environ.get("BOX_EDGE", 8.0))
+def _f(key, default):
+    return float(os.environ.get(key, default))
+
+
+# 远场盒子范围（全部可由 config.py / 环境变量覆盖）
+XMIN = _f("XMIN", -36.0)
+XMAX = _f("XMAX", 84.0)
+YMIN = _f("YMIN", -33.0)
+YMAX = _f("YMAX", 33.0)
+ZMIN = _f("ZMIN", -20.0)
+ZMAX = _f("ZMAX", 20.0)
+BOX_EDGE = _f("BOX_EDGE", 8.0)
 
 
 def read_binary_stl(path):
