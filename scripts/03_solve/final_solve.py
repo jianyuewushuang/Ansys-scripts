@@ -5,9 +5,15 @@ It is solved as fluid, its pressure collapses ("absolute pressure limited ... on
 zone 230789"), the continuity residual never drops and the forces are garbage.
 Removing it leaves a clean single fluid region.
 """
-import os, json, math, time
+import os, json, math, sys, time
 os.environ.setdefault("PYFLUENT_SHOW_SERVER_GUI", "0")
-from ansys.fluent.core import launch_fluent
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import common  # noqa: E402
+
+common.quiet_pyfluent()
+
+from ansys.fluent.core import launch_fluent  # noqa: E402
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
@@ -133,12 +139,19 @@ for nm, val in (("explicit_pressure_under_relaxation", PR),
 
 
 def methods(order1):
-    sch = {"pressure": "second-order", "momentum": "second-order-upwind",
-           "energy": "second-order-upwind"}
-    sch["k"] = "first-order-upwind" if order1 else "second-order-upwind"
-    sch["omega"] = "first-order-upwind" if order1 else "second-order-upwind"
-    if order1:
-        sch["pressure"] = "standard"
+    # 2026 R1 把离散格式挪到了 spatial_discretization 下面，旧路径虽然还能用，
+    # 但每次调用都会刷一屏 DeprecatedSettingWarning 与新语法提示。
+    # 注意：新路径的键名是 `mom` / `temperature`，不是 `momentum` / `energy`。
+    up = "first-order-upwind" if order1 else "second-order-upwind"
+    sch = {"pressure": "standard" if order1 else "second-order",
+           "mom": up, "temperature": up, "k": up, "omega": up}
+    try:
+        st.solution.methods.spatial_discretization.discretization_scheme.set_state(sch)
+        return
+    except Exception:
+        pass
+    sch = {"pressure": "standard" if order1 else "second-order",
+           "momentum": up, "energy": up, "k": up, "omega": up}
     try:
         st.solution.methods.discretization_scheme.set_state(sch)
     except Exception:
@@ -166,22 +179,32 @@ def set_ff(aoa):
 
 
 rd = st.solution.report_definitions
+HAS_MZ = False      # 力矩报告是否创建成功（创建失败时不要把它塞进 compute）
 
 
 def reports(aoa):
+    global HAS_MZ
     a = math.radians(aoa)
     lift = [-math.sin(a), 0.0, math.cos(a)]
     drag = [math.cos(a), 0.0, math.sin(a)]
     rd.force["L"] = {"zones": airframe, "force_vector": lift}
     rd.force["D"] = {"zones": airframe, "force_vector": drag}
+    # 2026 R1 的键名是 `mom_axis` / `mom_center`，写 `moment_axis` 会被拒
+    # （Key 'moment_axis' is invalid），于是俯仰力矩一直是 None、pitch_moment.png
+    # 也一直画不出来。report_output_type 选 "Moment" 拿到的是 N·m 原始力矩，
+    # 由本脚本自己除 q·S·MAC 得 Cm，避免依赖参考值的设置顺序。
     try:
-        rd.moment["Mz"] = {"zones": airframe, "moment_axis": [0.0, 1.0, 0.0],
-                           "moment_center": MC}
+        rd.moment["Mz"] = {"zones": airframe, "mom_axis": [0.0, 1.0, 0.0],
+                           "mom_center": MC, "report_output_type": "Moment"}
+        HAS_MZ = True
     except Exception as e:
+        HAS_MZ = False
         log("   (moment report unavailable: %s)" % str(e)[:80])
 
 
-def values(names=("L", "D")):
+def values(names=None):
+    if names is None:
+        names = ("L", "D") + (("Mz",) if HAS_MZ else ())
     out = rd.compute(report_defs=list(names))
     v = {}
     for item in out:

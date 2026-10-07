@@ -2,7 +2,14 @@
 import os, time, sys
 
 os.environ.setdefault("PYFLUENT_SHOW_SERVER_GUI", "0")
-from ansys.fluent.core import launch_fluent
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import common  # noqa: E402
+
+# 消除事件流后台线程的 ValueError 噪声（详见 common.quiet_pyfluent 注释）
+common.quiet_pyfluent()
+
+from ansys.fluent.core import launch_fluent  # noqa: E402
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
@@ -87,14 +94,14 @@ def run(p, **kw):
 
 
 def tui(cmd):
-    for m in (lambda: s.execute_tui(cmd),
-              lambda: s.scheme_eval.string_eval(f'(ti-menu-load-string "{cmd}")')):
-        try:
-            r = m()
-            if r is not None:
-                return r
-        except Exception:
-            continue
+    """执行 TUI 命令并回传 transcript 文本（转义由 common.tui 负责）。
+
+    旧实现先调 `s.execute_tui(cmd)`——它**永远返回 None**，于是必然回退到
+    手工拼的 scheme 表达式；而那条表达式没有给 Windows 路径加转义，引号提前
+    闭合，Fluent 会把残留的路径当变量求值并打印
+    `Error: eval: unbound variable`。改用 common.tui 后消失。
+    """
+    return common.tui(s, cmd)
 
 
 # ---------------- import ----------------

@@ -14,15 +14,21 @@
 
 import os
 import json
+import sys
 import time
 
 os.environ.setdefault("PYFLUENT_SHOW_SERVER_GUI", "0")
 
-import numpy as np
-import matplotlib
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import common  # noqa: E402
+
+common.quiet_pyfluent()
+
+import numpy as np  # noqa: E402
+import matplotlib  # noqa: E402
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.collections import LineCollection  # noqa: E402
 
 BASE = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))   # <project root>
@@ -86,8 +92,6 @@ def draw(ax, segs, proj, title, color="#1f3d6b"):
 
 def main():
     from ansys.fluent.core import launch_fluent
-    from ansys.fluent.core.fields.field_data_interfaces import (
-        SurfaceFieldDataRequest, SurfaceDataType)
 
     log("launching Fluent ...")
     s = launch_fluent(mode="solver",
@@ -110,11 +114,20 @@ def main():
         walls, info["wall_zones_err"] = [], str(e)[:120]
 
     try:
+        # 直接访问 `cell_zone_conditions.solid` 在没有固体区时会让 Fluent 打印
+        #   Error: api-get-var: the object is not active
+        #   Error Object: "setup/cell-zone-conditions/solid"
+        # 先用 is_active() 判断即可避免。
         cz = st.setup.cell_zone_conditions
         names = []
         for g in ("fluid", "solid"):
             o = getattr(cz, g, None)
             if o is None:
+                continue
+            try:
+                if hasattr(o, "is_active") and not o.is_active():
+                    continue
+            except Exception:
                 continue
             try:
                 names += list(o().keys()) if callable(o) else o.get_object_names()
@@ -165,9 +178,7 @@ def main():
         counts = {}
         for w in walls:
             try:
-                sd = fd.get_field_data(SurfaceFieldDataRequest(
-                    surfaces=[w], data_types=[SurfaceDataType.FacesConnectivity]))
-                counts[w] = len(list(sd[w].connectivity))   # 面数（不是连接表长度）
+                counts[w] = len(common.surface(fd, w).faces)
             except Exception:
                 counts[w] = -1
         info["wall_face_counts"] = counts
@@ -177,12 +188,8 @@ def main():
     surf = None
     if wall:
         try:
-            sd = fd.get_field_data(SurfaceFieldDataRequest(
-                surfaces=[wall],
-                data_types=[SurfaceDataType.Vertices,
-                            SurfaceDataType.FacesConnectivity]))
-            surf = (np.asarray(sd[wall].vertices),
-                    [np.asarray(c) for c in sd[wall].connectivity])
+            sd = common.surface(fd, wall)
+            surf = (sd.vertices, sd.faces)
             info["airframe_faces"] = len(surf[1])
             log("airframe surface mesh: %d faces" % len(surf[1]))
         except Exception as e:
@@ -203,13 +210,9 @@ def main():
             log("! plane %s: %s" % (name, str(e)[:110]))
             continue
         try:
-            sd = fd.get_field_data(SurfaceFieldDataRequest(
-                surfaces=[name],
-                data_types=[SurfaceDataType.Vertices,
-                            SurfaceDataType.FacesConnectivity]))
-            conn = [np.asarray(c) for c in sd[name].connectivity]
-            slices[name] = (np.asarray(sd[name].vertices), conn)
-            log("   %-4s : %d faces" % (name, len(conn)))
+            sd = common.surface(fd, name)
+            slices[name] = (sd.vertices, sd.faces)
+            log("   %-4s : %d faces" % (name, len(sd.faces)))
         except Exception as e:
             log("! slice %s: %s" % (name, str(e)[:110]))
 

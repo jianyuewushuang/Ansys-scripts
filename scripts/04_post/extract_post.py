@@ -1,12 +1,18 @@
 """Extract post-processing field data from the solved cases into npz files."""
 import os
+import sys
+
 import numpy as np
 
 os.environ.setdefault("PYFLUENT_SHOW_SERVER_GUI", "0")
-from ansys.fluent.core import launch_fluent
-from ansys.fluent.core.fields.field_data_interfaces import (
-    SurfaceDataType,
-    SurfaceFieldDataRequest,
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import common  # noqa: E402
+
+common.quiet_pyfluent()
+
+from ansys.fluent.core import launch_fluent  # noqa: E402
+from ansys.fluent.core.fields.field_data_interfaces import (  # noqa: E402
     ScalarFieldDataRequest,
     PathlinesFieldDataRequest,
 )
@@ -84,7 +90,8 @@ def make_planes(s):
         if nm not in made:
             continue
         try:
-            sd = surf_geom(getattr(s, "field_data", None) or s.fields.field_data, nm)
+            fd_tmp = getattr(s, "field_data", None) or s.fields.field_data
+            sd = common.surface(fd_tmp, nm)
             v = np.asarray(sd.vertices)
             print("   %-8s x[%7.2f,%7.2f] y[%7.2f,%7.2f] z[%7.2f,%7.2f]"
                   % (nm, v[:, 0].min(), v[:, 0].max(), v[:, 1].min(),
@@ -95,17 +102,17 @@ def make_planes(s):
 
 
 def surf_geom(fd, name):
-    r = fd.get_field_data(SurfaceFieldDataRequest(
-        surfaces=[name],
-        data_types=[SurfaceDataType.Vertices, SurfaceDataType.FacesConnectivity,
-                    SurfaceDataType.FacesCentroid, SurfaceDataType.FacesNormal]))
-    return r[name]
+    """取一个面的顶点 / 连接表 / 面心 / 法向。
+
+    走 common.surface()：带 flatten_connectivity=True，不再触发
+    PyFluentDeprecationWarning，且 .faces 恒为逐面索引列表。
+    """
+    return common.surface(fd, name, with_normals=True)
 
 
 def conn_list(c):
-    if isinstance(c, np.ndarray):
-        c = [c]
-    return [np.asarray(x) for x in c]
+    """兼容旧调用：既能吃逐面 list，也能吃扁平 ndarray。"""
+    return common.faces_of(c)
 
 
 def scalar(fd, name, field):
@@ -154,23 +161,23 @@ def main():
         try:
             sd = surf_geom(fd, WALL)
             bag["wall_verts"] = np.asarray(sd.vertices)
-            bag["wall_conn"] = np.array(conn_list(sd.connectivity), dtype=object)
-            bag["wall_nrm"] = np.asarray(sd.face_normals)
-            bag["wall_cen"] = np.asarray(sd.face_centroids)
+            bag["wall_conn"] = np.array(sd.faces, dtype=object)
+            bag["wall_nrm"] = np.asarray(sd.normals)
+            bag["wall_cen"] = np.asarray(sd.centroids)
             bag["wall_p"] = scalar(fd, WALL, "pressure")
             pf = scalar_face(fd, WALL, "pressure")
-            if pf is not None and len(pf) == len(conn_list(sd.connectivity)):
+            if pf is not None and len(pf) == len(sd.faces):
                 bag["wall_pf"] = pf
             print("   wall: %d verts, %d face entries"
                   % (bag["wall_verts"].shape[0],
-                     sum(len(c) for c in conn_list(sd.connectivity))), flush=True)
+                     sum(len(c) for c in sd.faces)), flush=True)
         except Exception as e:
             print("   ! wall: " + str(e)[:160], flush=True)
 
         try:
             sd = surf_geom(fd, "sym_y0")
             bag["sym_verts"] = np.asarray(sd.vertices)
-            bag["sym_conn"] = np.array(conn_list(sd.connectivity), dtype=object)
+            bag["sym_conn"] = np.array(sd.faces, dtype=object)
             for fld in ("velocity-magnitude", "pressure",
                         "vorticity-mag", "turb-kinetic-energy", "q-criterion"):
                 v = scalar(fd, "sym_y0", fld)
@@ -183,7 +190,7 @@ def main():
         try:
             sd = surf_geom(fd, "hor_z0")
             bag["hor_verts"] = np.asarray(sd.vertices)
-            bag["hor_conn"] = np.array(conn_list(sd.connectivity), dtype=object)
+            bag["hor_conn"] = np.array(sd.faces, dtype=object)
             for fld in ("velocity-magnitude", "vorticity-mag", "q-criterion"):
                 v = scalar(fd, "hor_z0", fld)
                 if v is not None:
@@ -199,8 +206,7 @@ def main():
             try:
                 sd = surf_geom(fd, nm)
                 bag["xs%d_verts" % int(x)] = np.asarray(sd.vertices)
-                bag["xs%d_conn" % int(x)] = np.array(
-                    conn_list(sd.connectivity), dtype=object)
+                bag["xs%d_conn" % int(x)] = np.array(sd.faces, dtype=object)
                 for fld in ("velocity-magnitude", "vorticity-mag",
                             "q-criterion"):
                     v = scalar(fd, nm, fld)
@@ -215,19 +221,26 @@ def main():
             if seed not in names:
                 continue
             try:
-                req = PathlinesFieldDataRequest(
-                    surfaces=[seed], field_name="velocity-magnitude",
-                    steps=230, step_size=0.35, skip=1,
-                    reverse=False, accuracy_control_on=True, tolerance=0.001,
-                    coarsen=1, velocity_domain="all-phases")
+                # flatten_connectivity=True：避免 PyFluentDeprecationWarning，
+                # 同时 lines 变成扁平数组，交给 common.lines_of 统一展开
+                try:
+                    req = PathlinesFieldDataRequest(
+                        surfaces=[seed], field_name="velocity-magnitude",
+                        steps=230, step_size=0.35, skip=1,
+                        reverse=False, accuracy_control_on=True, tolerance=0.001,
+                        coarsen=1, velocity_domain="all-phases",
+                        flatten_connectivity=True)
+                except TypeError:                 # 旧版 PyFluent 没有该参数
+                    req = PathlinesFieldDataRequest(
+                        surfaces=[seed], field_name="velocity-magnitude",
+                        steps=230, step_size=0.35, skip=1,
+                        reverse=False, accuracy_control_on=True, tolerance=0.001,
+                        coarsen=1, velocity_domain="all-phases")
                 r = fd.get_field_data(req)
                 d = r[seed]
                 bag["pl_%s_verts" % seed] = np.asarray(d.vertices)
-                lines = d.lines
-                if isinstance(lines, np.ndarray):
-                    lines = [lines]
-                bag["pl_%s_lines" % seed] = np.array(
-                    [np.asarray(l) for l in lines], dtype=object)
+                lines = common.lines_of(d.lines)
+                bag["pl_%s_lines" % seed] = np.array(lines, dtype=object)
                 bag["pl_%s_val" % seed] = np.asarray(d.scalar_field).ravel()
                 print("   pathlines %s: %d pts, %d lines"
                       % (seed, len(d.vertices), len(lines)), flush=True)

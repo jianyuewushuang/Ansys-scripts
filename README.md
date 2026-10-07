@@ -71,6 +71,7 @@ UAVdesign20261004/
 | **`scripts/`** | 全部 Python 源码，按流水线阶段分级命名 |
 | **`scripts/config.py`** | 所有可调参数的唯一来源 |
 | **`scripts/run_all.py`** | 8 阶段总控，把 config 翻成环境变量后逐阶段调用子脚本 |
+| **`scripts/common.py`** | 各阶段共用的小工具：PyFluent 已知缺陷绕行、连接表格式转换、TUI 转义 |
 | **`scripts/01_geometry`** | STL 度量、连通分量诊断、体素求并修复、外流场域构建、参考量计算、三视图 |
 | **`scripts/02_mesh`** | Fluent Watertight 网格 + 网格出图 |
 | **`scripts/03_solve`** | 删内腔 → 物理模型 → 显式松弛 → 预热+主迭代 → 每 50 步报系数 → 存 case |
