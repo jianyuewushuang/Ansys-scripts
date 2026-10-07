@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
- 一键运行：无人机 CFD 全流程  (run_all.py)
+这是唯一需要手动运行的脚本
 ==============================================================================
 
 只改 `config.py`，然后：
 
-    ./.venv/Scripts/python.exe run_all.py
+    python run_all.py
 
 阶段顺序：
     ① geometry      体素求并修复 STL          scripts/01_geometry/voxel_union.py
@@ -22,20 +22,20 @@
 常用命令行覆盖（优先级高于 config.py）：
 
     # 只跑后处理（网格与 case 已存在）
-    ./.venv/Scripts/python.exe run_all.py --only extract,render,report
+    python run_all.py --only extract,render,report
 
     # 快速冒烟测试：单个攻角、极少迭代，结果写到临时目录
-    ./.venv/Scripts/python.exe run_all.py --only solve,extract,render \
+    python run_all.py --only solve,extract,render \
         --aoa 0 --warm 5 --iters 5 --results results_smoke
 
     # 跳过耗时最长的网格与求解
-    ./.venv/Scripts/python.exe run_all.py --skip mesh,solve
+    python run_all.py --skip mesh,solve
 
     # 试用新参数但不动正式产物（几何/网格/case 全部写到临时目录）
-    ./.venv/Scripts/python.exe run_all.py --voxel 0.08 --artifacts work/_trial
+    python run_all.py --voxel 0.08 --artifacts work/_trial
 
     # 只看参数，不实际执行
-    ./.venv/Scripts/python.exe run_all.py --dry-run
+    python run_all.py --dry-run
 ==============================================================================
 """
 
@@ -46,17 +46,25 @@ import sys
 import time
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPTS_DIR)     # <项目根>
+ROOT = os.path.dirname(SCRIPTS_DIR)  # <项目根>
 sys.path.insert(0, SCRIPTS_DIR)
 
-import config as C                      # noqa: E402
+import config as C  # noqa: E402
 
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 if not os.path.exists(PY):
     PY = sys.executable
 
-STAGES = ["geometry", "domain", "mesh", "meshpreview",
-          "solve", "extract", "render", "report"]
+STAGES = [
+    "geometry",
+    "domain",
+    "mesh",
+    "meshpreview",
+    "solve",
+    "extract",
+    "render",
+    "report",
+]
 
 ENABLED = {
     "geometry": C.RUN_GEOMETRY,
@@ -86,54 +94,70 @@ SCRIPT = {
 def build_env():
     """把 config.py 的参数翻译成各脚本读取的环境变量。"""
     e = dict(os.environ)
-    e.update({
-        # 运行
-        "PYFLUENT_SHOW_SERVER_GUI": C.PYFLUENT_SHOW_SERVER_GUI,
-        "FLUENT_PRECISION": C.FLUENT_PRECISION,
-        "RESULTS_DIR": C.RESULTS_DIR,
-        "WORK_DIR": C.WORK_DIR,
-
-        # 几何
-        "VOXEL": str(C.VOXEL),
-        "INPUT_STL": C.INPUT_STL,        # voxel_union 的输入
-        "SRC": C.SOLID_STL,              # build_full_domain 的输入
-
-        # 计算域
-        "XMIN": str(C.DOMAIN_XMIN), "XMAX": str(C.DOMAIN_XMAX),
-        "YMIN": str(C.DOMAIN_YMIN), "YMAX": str(C.DOMAIN_YMAX),
-        "ZMIN": str(C.DOMAIN_ZMIN), "ZMAX": str(C.DOMAIN_ZMAX),
-        "BOX_EDGE": str(C.BOX_EDGE),
-
-        # 网格
-        "DOM": C.DOMAIN_STL, "MSH": C.MESH_FILE,
-        "MIN_SIZE": str(C.MIN_SIZE), "MAX_SIZE": str(C.MAX_SIZE),
-        "GROWTH": str(C.GROWTH), "CURV": str(C.CURV), "BODY": str(C.BODY),
-        "N_LAYERS": str(C.N_LAYERS), "FIRST_H": str(C.FIRST_H),
-        "RATE": str(C.RATE), "HEX_MAX": str(C.HEX_MAX),
-        "VOLFILL": C.VOLFILL, "SETUP": C.SETUP, "SHARE": C.SHARE,
-        "JOIN": C.JOIN, "NPROC": str(C.MESH_NPROC),
-
-        # 网格出图
-        "MESH_SLICES": ",".join(C.MESH_PREVIEW_SLICES),
-        "MESH_MAX_FACES": str(C.MESH_PREVIEW_MAX_FACES),
-        "MESH_DPI": str(C.MESH_PREVIEW_DPI),
-
-        # 来流与参考量
-        "T_INF": str(C.T_INF), "P_INF": str(C.P_INF), "RHO": str(C.RHO),
-        "MU": str(C.MU), "V_INF": str(C.V_INF), "A_INF": str(C.A_INF),
-        "SREF": str(C.SREF), "LREF": str(C.LREF), "BREF": str(C.BREF),
-        "Q_INF": str(C.Q_INF),
-        "MC": ",".join(str(x) for x in C.MC),
-
-        # 求解
-        "AOAS": ",".join(str(a) for a in C.AOAS),
-        "WARM": str(C.WARM), "ITERS": str(C.ITERS),
-        "PRELAX": str(C.PRELAX), "MRELAX": str(C.MRELAX),
-        "DELZONE": C.DELZONE, "CASE_FMT": C.CASE_FMT,
-
-        # 后处理
-        "STATIONS": ",".join(str(s) for s in C.STATIONS),
-    })
+    e.update(
+        {
+            # 运行
+            "PYFLUENT_SHOW_SERVER_GUI": C.PYFLUENT_SHOW_SERVER_GUI,
+            "FLUENT_PRECISION": C.FLUENT_PRECISION,
+            "RESULTS_DIR": C.RESULTS_DIR,
+            "WORK_DIR": C.WORK_DIR,
+            # 几何
+            "VOXEL": str(C.VOXEL),
+            "INPUT_STL": C.INPUT_STL,  # voxel_union 的输入
+            "SRC": C.SOLID_STL,  # build_full_domain 的输入
+            # 计算域
+            "XMIN": str(C.DOMAIN_XMIN),
+            "XMAX": str(C.DOMAIN_XMAX),
+            "YMIN": str(C.DOMAIN_YMIN),
+            "YMAX": str(C.DOMAIN_YMAX),
+            "ZMIN": str(C.DOMAIN_ZMIN),
+            "ZMAX": str(C.DOMAIN_ZMAX),
+            "BOX_EDGE": str(C.BOX_EDGE),
+            # 网格
+            "DOM": C.DOMAIN_STL,
+            "MSH": C.MESH_FILE,
+            "MIN_SIZE": str(C.MIN_SIZE),
+            "MAX_SIZE": str(C.MAX_SIZE),
+            "GROWTH": str(C.GROWTH),
+            "CURV": str(C.CURV),
+            "BODY": str(C.BODY),
+            "N_LAYERS": str(C.N_LAYERS),
+            "FIRST_H": str(C.FIRST_H),
+            "RATE": str(C.RATE),
+            "HEX_MAX": str(C.HEX_MAX),
+            "VOLFILL": C.VOLFILL,
+            "SETUP": C.SETUP,
+            "SHARE": C.SHARE,
+            "JOIN": C.JOIN,
+            "NPROC": str(C.MESH_NPROC),
+            # 网格出图
+            "MESH_SLICES": ",".join(C.MESH_PREVIEW_SLICES),
+            "MESH_MAX_FACES": str(C.MESH_PREVIEW_MAX_FACES),
+            "MESH_DPI": str(C.MESH_PREVIEW_DPI),
+            # 来流与参考量
+            "T_INF": str(C.T_INF),
+            "P_INF": str(C.P_INF),
+            "RHO": str(C.RHO),
+            "MU": str(C.MU),
+            "V_INF": str(C.V_INF),
+            "A_INF": str(C.A_INF),
+            "SREF": str(C.SREF),
+            "LREF": str(C.LREF),
+            "BREF": str(C.BREF),
+            "Q_INF": str(C.Q_INF),
+            "MC": ",".join(str(x) for x in C.MC),
+            # 求解
+            "AOAS": ",".join(str(a) for a in C.AOAS),
+            "WARM": str(C.WARM),
+            "ITERS": str(C.ITERS),
+            "PRELAX": str(C.PRELAX),
+            "MRELAX": str(C.MRELAX),
+            "DELZONE": C.DELZONE,
+            "CASE_FMT": C.CASE_FMT,
+            # 后处理
+            "STATIONS": ",".join(str(s) for s in C.STATIONS),
+        }
+    )
     return e
 
 
@@ -157,10 +181,17 @@ def run_stage(name, env, logf):
         env["OUT"] = C.DOMAIN_STL
 
     t = time.time()
-    proc = subprocess.Popen([PY, path], cwd=ROOT, env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace",
-                            bufsize=1)
+    proc = subprocess.Popen(
+        [PY, path],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
     for line in proc.stdout:
         line = line.rstrip("\n")
         print(line, flush=True)
@@ -186,15 +217,20 @@ def main():
     ap.add_argument("--iters", type=int, help="覆盖 config.ITERS")
     ap.add_argument("--voxel", type=float, help="覆盖 config.VOXEL")
     ap.add_argument("--results", help="覆盖 config.RESULTS_DIR")
-    ap.add_argument("--cases-dir",
-                    help="覆盖 case 输出目录（默认 artifacts/cases）；"
-                         "冒烟测试时指向临时目录可避免覆盖正式 case")
-    ap.add_argument("--artifacts",
-                    help="覆盖全部生成物根目录（几何/网格/case 一起搬走）；"
-                         "适合在不影响正式产物的情况下试用新参数")
+    ap.add_argument(
+        "--cases-dir",
+        help="覆盖 case 输出目录（默认 artifacts/cases）；"
+        "冒烟测试时指向临时目录可避免覆盖正式 case",
+    )
+    ap.add_argument(
+        "--artifacts",
+        help="覆盖全部生成物根目录（几何/网格/case 一起搬走）；"
+        "适合在不影响正式产物的情况下试用新参数",
+    )
     ap.add_argument("--nproc", type=int, help="覆盖所有阶段的并行核数")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="只打印参数与将要执行的阶段，不实际运行")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="只打印参数与将要执行的阶段，不实际运行"
+    )
     args = ap.parse_args()
 
     # ---- 命令行覆盖 ----
@@ -235,8 +271,7 @@ def main():
     print("=" * 74)
     print(C.summary())
     print("执行阶段 : " + (" → ".join(plan) if plan else "(无)"))
-    print("预计耗时 : 含网格与 4 攻角 × 300 步约 60 分钟；"
-          "仅后处理约 4 分钟")
+    print("预计耗时 : 含网格与 4 攻角 × 300 步约 60 分钟；仅后处理约 4 分钟")
 
     if args.dry_run:
         print("\n[dry-run] 不实际执行。")
@@ -273,7 +308,7 @@ def main():
         print("失败阶段: " + ", ".join(failed))
         print("=" * 74)
         return 1
-    print("全部阶段完成 ✅")
+    print("全部阶段完成")
     print("  · 报表   : %s" % os.path.join(C.RESULTS_DIR, "report.html"))
     print("  · 系数   : %s" % os.path.join(C.RESULTS_DIR, "forces.json"))
     print("  · 网格图 : %s" % os.path.join(C.RESULTS_DIR, "mesh_surface.png"))
