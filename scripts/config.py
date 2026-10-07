@@ -34,8 +34,8 @@ import os
 # §1 路径与目录
 # ==============================================================================
 
-# 项目根目录。默认自动推导（本文件所在目录），一般不需要改。
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+# 项目根目录。本文件位于 <项目根>/scripts/ 下，上溯两级即项目根，一般不需要改。这样从任意工作目录运行脚本都能正确定位产物。
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 输入几何 —— 唯一不可再生的文件。若换成其它飞机，只改这一行。
 INPUT_STL = os.path.join(PROJECT_ROOT, "data", "1.stl")

@@ -45,12 +45,13 @@ import subprocess
 import sys
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(SCRIPTS_DIR)     # <项目根>
+sys.path.insert(0, SCRIPTS_DIR)
 
 import config as C                      # noqa: E402
 
-PY = os.path.join(HERE, ".venv", "Scripts", "python.exe")
+PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 if not os.path.exists(PY):
     PY = sys.executable
 
@@ -70,14 +71,14 @@ ENABLED = {
 
 # 每个阶段：(脚本相对路径, 人类可读说明)
 SCRIPT = {
-    "geometry": ("scripts/01_geometry/voxel_union.py", "体素求并修复几何"),
-    "domain": ("scripts/01_geometry/build_full_domain.py", "生成外流场计算域"),
-    "mesh": ("scripts/02_mesh/mesh_half.py", "Fluent WTM 体网格"),
-    "meshpreview": ("scripts/02_mesh/mesh_preview.py", "网格出图"),
-    "solve": ("scripts/03_solve/final_solve.py", "攻角扫描求解"),
-    "extract": ("scripts/04_post/extract_post.py", "抽取流场"),
-    "render": ("scripts/04_post/render_post.py", "渲染图片"),
-    "report": ("scripts/04_post/make_report.py", "生成 HTML 报表"),
+    "geometry": ("01_geometry/voxel_union.py", "体素求并修复几何"),
+    "domain": ("01_geometry/build_full_domain.py", "生成外流场计算域"),
+    "mesh": ("02_mesh/mesh_half.py", "Fluent WTM 体网格"),
+    "meshpreview": ("02_mesh/mesh_preview.py", "网格出图"),
+    "solve": ("03_solve/final_solve.py", "攻角扫描求解"),
+    "extract": ("04_post/extract_post.py", "抽取流场"),
+    "render": ("04_post/render_post.py", "渲染图片"),
+    "report": ("04_post/make_report.py", "生成 HTML 报表"),
 }
 
 
@@ -138,7 +139,7 @@ def build_env():
 
 def run_stage(name, env, logf):
     rel, desc = SCRIPT[name]
-    path = os.path.join(HERE, rel)
+    path = os.path.join(SCRIPTS_DIR, rel)
     print("\n" + "=" * 74, flush=True)
     print("阶段 %-12s %s" % (name.upper(), desc), flush=True)
     print("脚本 %s" % rel, flush=True)
@@ -156,7 +157,7 @@ def run_stage(name, env, logf):
         env["OUT"] = C.DOMAIN_STL
 
     t = time.time()
-    proc = subprocess.Popen([PY, path], cwd=HERE, env=env,
+    proc = subprocess.Popen([PY, path], cwd=ROOT, env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace",
                             bufsize=1)
