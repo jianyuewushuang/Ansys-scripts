@@ -99,7 +99,7 @@ python scripts/run_all.py
 | 2 | `domain` | `scripts/01_geometry/build_full_domain.py` | `artifacts/geometry/fluid_domain.stl` | < 1 min |
 | 3 | `mesh` | `scripts/02_mesh/mesh_half.py` | `artifacts/mesh/aircraft_mesh.msh.h5` | 2–6 min |
 | 4 | `meshpreview` | `scripts/02_mesh/mesh_preview.py` | `results/mesh_*.png` + `mesh_stats.json` | 1.5–3 min |
-| 5 | `solve` | `scripts/03_solve/final_solve.py` | `artifacts/cases/final_aoa*.cas.h5` + `results/forces.json` | ~12 min/工况 |
+| 5 | `solve` | `scripts/03_solve/final_solve.py` | `artifacts/cases/final_aoa*.cas.h5` + `results/forces.json` | GPU ~1 min/工况；CPU ~12 min/工况 |
 | 6 | `extract` | `scripts/04_post/extract_post.py` | `results/fields_aoa*.npz` | ~2.5 min |
 | 7 | `render` | `scripts/04_post/render_post.py` | `results/*.png` | ~30 s |
 | 8 | `report` | `scripts/04_post/make_report.py` | `results/report.html` | < 1 s |
@@ -130,8 +130,12 @@ python scripts/run_all.py --only solve,extract,render,report \
 python scripts/run_all.py --voxel 0.08 --artifacts work/_trial
 
 # 其它
-python scripts/run_all.py --nproc 8        # 并行核数
+python scripts/run_all.py --nproc 4        # 并行核数
 python scripts/run_all.py --iters 500      # 主迭代步数
+
+# 指定求解设备（默认 auto：有 NVIDIA GPU 就用 GPU，没有自动回退 CPU）
+python scripts/run_all.py --device gpu
+python scripts/run_all.py --device cpu     # 排查 GPU 问题时强制走 CPU
 ```
 
 完整参数列表见 `run_all.py --help`。
@@ -152,6 +156,18 @@ python scripts/run_all.py --iters 500      # 主迭代步数
 | §8 后处理 | `STATIONS`、`PATHLINE_SEEDS` | 尾涡站位与流线种子 |
 | §9 网格出图 | `MESH_PREVIEW_SLICES`、`MESH_PREVIEW_MAX_FACES` | 切面选择与抽稀上限 |
 | §10 并行 | `MESH_NPROC`、`SOLVE_NPROC`、`POST_NPROC` | 各阶段核数 |
+| §7.6 设备 | `SOLVE_DEVICE`、`SOLVE_NPROC_GPU`、`GPU_FALLBACK_TO_CPU`、`GPU_SELFTEST` | 能用 GPU 就用，不行自动回退 CPU |
+
+### 求解设备：能用 GPU 就用，不能用自动回退 CPU
+
+```bash
+python scripts/run_all.py --device cpu     # 强制 CPU
+python scripts/run_all.py --device gpu     # 强制 GPU
+python scripts/05_verify/bench_gpu.py      # 实测本机 CPU / GPU 速度并打印加速比
+python scripts/05_verify/bench_gpu.py "gpu:1" "gpu:2" "cpu:4"
+```
+
+每轮求解会把实际设备写进 `results/run_hardware.json`。
 
 ### 单独出网格图
 
@@ -173,7 +189,10 @@ python scripts/run_all.py --only meshpreview
 python scripts/05_verify/probe25.py        # 近壁 y⁺
 python scripts/05_verify/check_fields.py   # 远场压力/马赫、质量流平衡
 python scripts/05_verify/check_mcp.py      # MCP 服务器握手
+python scripts/05_verify/bench_gpu.py      # CPU / GPU 求解速度实测
 ```
+
+另有 `scripts/05_verify/test_launch.py`、`diag_case.py`、`check_mesh.py` 等排查脚本。
 
 ## 环境要求
 

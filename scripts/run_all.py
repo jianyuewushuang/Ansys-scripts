@@ -50,6 +50,7 @@ ROOT = os.path.dirname(SCRIPTS_DIR)  # <项目根>
 sys.path.insert(0, SCRIPTS_DIR)
 
 import config as C  # noqa: E402
+import common  # noqa: E402
 
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 if not os.path.exists(PY):
@@ -154,6 +155,13 @@ def build_env():
             "MRELAX": str(C.MRELAX),
             "DELZONE": C.DELZONE,
             "CASE_FMT": C.CASE_FMT,
+            # 求解设备：GPU 优先，无 GPU 自动回退 CPU
+            "SOLVE_DEVICE": C.SOLVE_DEVICE,
+            "SOLVE_NPROC_GPU": str(C.SOLVE_NPROC_GPU),
+            "GPU_FALLBACK": "1" if C.GPU_FALLBACK_TO_CPU else "0",
+            "GPU_PERF": str(C.GPU_PERFORMANCE_MODE),
+            "GPU_SELFTEST": "1" if C.GPU_SELFTEST else "0",
+            "GPU_SEED": str(C.GPU_SEED_ITERS),
             # 后处理
             "STATIONS": ",".join(str(s) for s in C.STATIONS),
         }
@@ -229,6 +237,12 @@ def main():
     )
     ap.add_argument("--nproc", type=int, help="覆盖所有阶段的并行核数")
     ap.add_argument(
+        "--device",
+        choices=("auto", "gpu", "cpu", "hybrid"),
+        help="覆盖 config.SOLVE_DEVICE：auto/gpu/cpu，"
+        "或 hybrid = CPU 冷启动播种后交给 GPU 跑主迭代",
+    )
+    ap.add_argument(
         "--dry-run", action="store_true", help="只打印参数与将要执行的阶段，不实际运行"
     )
     args = ap.parse_args()
@@ -256,6 +270,8 @@ def main():
         C.CASE_FMT = os.path.join(d, "final_aoa%d.cas.h5")
     if args.nproc:
         C.MESH_NPROC = C.SOLVE_NPROC = C.POST_NPROC = args.nproc
+    if args.device:
+        C.SOLVE_DEVICE = args.device
 
     plan = list(STAGES)
     if args.only:
@@ -270,8 +286,38 @@ def main():
     print(" 无人机 CFD 全流程   ——   参数来自 config.py")
     print("=" * 74)
     print(C.summary())
+
+    # 硬件与求解设备（GPU 优先，无 GPU 回退 CPU）
+    hw = common.resolve_device(
+        C.SOLVE_DEVICE, gpu_nproc=C.SOLVE_NPROC_GPU, cpu_nproc=C.SOLVE_NPROC
+    )
+    gpus = hw["gpus"]
+    print(
+        "硬件     : %d 逻辑核 | %s"
+        % (
+            common.cpu_cores(),
+            (
+                "GPU: "
+                + ", ".join("%s %.1fGB" % (g["name"], g["memory_gb"]) for g in gpus)
+            )
+            if gpus
+            else "未检测到 NVIDIA GPU",
+        )
+    )
+    print(
+        "求解设备 : %s × %d 进程  （%s）"
+        % (hw["device"].upper(), hw["nproc"], hw["reason"])
+    )
+    if hw["device"] == "gpu":
+        print("           实测 GPU×1 ≈ 8× 于 CPU×4；Student 版 CPU 回退上限为 4 进程")
+
     print("执行阶段 : " + (" → ".join(plan) if plan else "(无)"))
-    print("预计耗时 : 含网格与 4 攻角 × 300 步约 60 分钟；仅后处理约 4 分钟")
+    est = {
+        "hybrid": "hybrid 约 2 min/工况（CPU 播种 + GPU 主迭代）",
+        "gpu": "GPU 约 1 min/工况（冷启动自检另计 1 min，"
+        "若自检不通过会自动回退到 12 min/工况）",
+    }.get(hw["device"], "CPU 约 12 min/工况")
+    print("预计耗时 : 几何+网格约 3 min、后处理约 4 min；求解 " + est)
 
     if args.dry_run:
         print("\n[dry-run] 不实际执行。")

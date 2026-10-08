@@ -101,7 +101,189 @@ def suppress(*categories):
 
 
 # ==============================================================================
-# 2. TUI 命令包装（修 `Error: eval: unbound variable`）
+# 2. 硬件探测与 GPU / CPU 求解器选择
+# ==============================================================================
+def detect_gpus():
+    """用 nvidia-smi 探测可用的 NVIDIA GPU。
+
+    返回 list[dict]，每项含 index / name / driver / memory_gb / compute_cap。
+    没有 nvidia-smi（或无 NVIDIA 卡）时返回空列表 —— 这就是"回退 CPU"的判据。
+    """
+    try:
+        import subprocess
+
+        q = (
+            "--query-gpu=index,name,driver_version,memory.total,compute_cap"
+            "--format=csv,noheader,nounits"
+        ).replace("--format", ",--format")
+        # 上面拼接容易出错，这里写清楚
+        args = [
+            "nvidia-smi",
+            "--query-gpu=index,name,driver_version,memory.total,compute_cap",
+            "--format=csv,noheader,nounits",
+        ]
+        out = subprocess.run(args, capture_output=True, text=True, timeout=20)
+        if out.returncode != 0 or not out.stdout.strip():
+            return []
+        gpus = []
+        for line in out.stdout.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 4:
+                continue
+            gpus.append(
+                {
+                    "index": parts[0],
+                    "name": parts[1],
+                    "driver": parts[2] if len(parts) > 2 else "",
+                    "memory_gb": round(float(parts[3]) / 1024.0, 2)
+                    if len(parts) > 3
+                    else 0.0,
+                    "compute_cap": parts[4] if len(parts) > 4 else "",
+                }
+            )
+        return gpus
+    except Exception:
+        return []
+
+
+def cpu_cores():
+    """返回逻辑处理器数（拿不到就返回 4）。"""
+    try:
+        import os
+
+        n = os.cpu_count()
+        return int(n) if n else 4
+    except Exception:
+        return 4
+
+
+def resolve_device(prefer="auto", gpu_nproc=1, cpu_nproc=0, auto_max=8):
+    """决定这一轮用什么设备 + 几个 MPI 进程。
+
+    prefer : "auto" —— 有 NVIDIA GPU 就用 GPU，否则 CPU
+             "gpu"  —— 强制 GPU（不可用时由 launch_solver 决定是否回退）
+             "cpu"  —— 强制 CPU
+    cpu_nproc : 0 = 自动（min(逻辑核数, auto_max)，下限 2）
+
+    返回 dict：{"device", "nproc", "gpus", "reason"}
+    """
+    gpus = detect_gpus()
+    cores = cpu_cores()
+    if not cpu_nproc or cpu_nproc <= 0:
+        cpu_nproc = max(2, min(cores, auto_max))
+    if prefer == "cpu":
+        return {
+            "device": "cpu",
+            "nproc": int(cpu_nproc),
+            "gpus": gpus,
+            "reason": "config.SOLVE_DEVICE = cpu（强制）",
+        }
+    if prefer == "hybrid":
+        # CPU 播种 + GPU 主迭代：主迭代段在 GPU 上，所以按 GPU 报告
+        if gpus:
+            return {
+                "device": "hybrid",
+                "nproc": int(gpu_nproc),
+                "gpus": gpus,
+                "reason": "CPU 播种 + GPU 主迭代（%s）" % gpus[0]["name"],
+            }
+        return {
+            "device": "cpu",
+            "nproc": int(cpu_nproc),
+            "gpus": gpus,
+            "reason": "要求 hybrid 但没有可用 NVIDIA 设备，全程 CPU",
+        }
+    if prefer in ("auto", "gpu") and gpus:
+        return {
+            "device": "gpu",
+            "nproc": int(gpu_nproc),
+            "gpus": gpus,
+            "reason": "检测到 %s（%.1f GB）" % (gpus[0]["name"], gpus[0]["memory_gb"]),
+        }
+    if prefer == "gpu":
+        return {
+            "device": "cpu",
+            "nproc": int(cpu_nproc),
+            "gpus": gpus,
+            "reason": "要求 GPU 但没有可用 NVIDIA 设备，回退 CPU",
+        }
+    return {
+        "device": "cpu",
+        "nproc": int(cpu_nproc),
+        "gpus": gpus,
+        "reason": "未检测到 NVIDIA GPU",
+    }
+
+
+def gpu_memory_gb(session):
+    """查询当前会话已占用的 GPU 显存（GB）。<=0 表示 GPU 求解器没真正启用。"""
+    try:
+        v = session.scheme.string_eval("(%gpuapp-get-gpu-memory-usage)")
+        return round(float(str(v).strip().split()[0]), 3)
+    except Exception:
+        return 0.0
+
+
+def launch_solver(
+    prefer="auto",
+    gpu_nproc=1,
+    cpu_nproc=4,
+    precision="double",
+    cwd=None,
+    fallback=True,
+    performance_mode=0,
+    log=print,
+):
+    """启动 Fluent **求解器**会话；优先 GPU，失败自动回退 CPU。
+
+    返回 (session, device)。device 为 "gpu" / "cpu"，调用方据此记录日志。
+
+    为什么 GPU 只开 1 个 MPI 进程：本机实测（318k 格、RTX 5060 Laptop 8 GB）
+        CPU×4  1.593 s/步
+        GPU×4  0.269 s/步   (5.9×)
+        GPU×2  0.247 s/步   (6.5×)
+        GPU×1  0.196 s/步   (8.1×)  ← 最快
+    单卡多进程会争用同一块 GPU，进程越少越快。
+    """
+    from ansys.fluent.core import launch_fluent
+
+    info = resolve_device(prefer, gpu_nproc=gpu_nproc, cpu_nproc=cpu_nproc)
+    log("求解设备 : %s  —— %s" % (info["device"].upper(), info["reason"]))
+
+    if info["device"] == "gpu":
+        try:
+            log("启动 Fluent（-gpu, %d 进程）..." % info["nproc"])
+            s = launch_fluent(
+                mode="solver",
+                precision=precision,
+                processor_count=info["nproc"],
+                gpu=True,
+                cwd=cwd,
+            )
+            if performance_mode:
+                try:
+                    s.scheme.string_eval(
+                        "(rpsetvar 'gpuapp/performance-mode %d)" % int(performance_mode)
+                    )
+                    log("  gpuapp/performance-mode = %d" % performance_mode)
+                except Exception as e:
+                    log("  performance-mode 设置失败（忽略）：%s" % str(e)[:100])
+            return s, "gpu"
+        except Exception as e:
+            log("  !! GPU 启动失败：%s" % str(e)[:200])
+            if not fallback:
+                raise
+            log("  回退到 CPU ...")
+
+    log("启动 Fluent（CPU, %d 进程）..." % cpu_nproc)
+    s = launch_fluent(
+        mode="solver", precision=precision, processor_count=int(cpu_nproc), cwd=cwd
+    )
+    return s, "cpu"
+
+
+# ==============================================================================
+# 3. TUI 命令包装
 # ==============================================================================
 def tui(session, cmd: str) -> str:
     """执行一条 Fluent TUI 命令并返回 transcript 文本。

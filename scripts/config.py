@@ -215,7 +215,27 @@ MRELAX = 0.5  # 动量显式松弛（0.3~0.6）
 #   Prime 网格（prime_mesh.py 产出）: 内腔叫 "model.1"
 DELZONE = "aircraft"
 
-SOLVE_NPROC = 4  # 求解阶段并行核数
+# ==============================================================================
+# §7.6 求解设备：GPU 优先，无 GPU 自动回退 CPU
+# ==============================================================================
+
+SOLVE_DEVICE = "auto"  # "auto"   = 有 NVIDIA GPU 就试 GPU（含冷启动自检），否则 CPU
+# "hybrid" = ★最快★ CPU 冷启动播种若干步 → GPU 跑主迭代
+# "gpu"    = 强制全程 GPU（本算例会发散，仅用于续算式扫描）
+# "cpu"    = 强制 CPU（排查 GPU 问题时用）
+GPU_FALLBACK_TO_CPU = True  # True = GPU 启动失败时自动回退 CPU；False = 直接报错停下
+
+SOLVE_NPROC_GPU = 1  # GPU 求解的 MPI 进程数。单显卡填 1 最快；多卡可填卡数
+SOLVE_NPROC = 4  # CPU 回退时的 MPI 进程数。
+GPU_PERFORMANCE_MODE = 0  # 0 = 关闭；1/2/3 = Fluent gpuapp 的激进程度（实测本例无提升）
+
+# 所以"有显卡"不等于"能用"：开启自检后，会先花约 1 分钟用一次性会话验证冷启动，
+# 站不住就自动回退 CPU。确认你的算例能在 GPU 上冷启动后可以关掉以省这 1 分钟。
+GPU_SELFTEST = True
+
+# hybrid 模式：CPU 冷启动跑多少步再把解交给 GPU。
+# 实测 20 / 40 / 80 步给出的 C_L 完全相同（0.0277），所以 20 步即可，再多是浪费。
+GPU_SEED_ITERS = 20
 
 
 # ==============================================================================
@@ -293,5 +313,6 @@ def summary():
   迭代       : warm={WARM} + main={ITERS}   松弛: p={PRELAX}, mom={MRELAX}
   删除内腔   : {DELZONE}
   站位       : {STATIONS}
+  求解设备   : {SOLVE_DEVICE}（GPU {SOLVE_NPROC_GPU} 进程 / CPU 回退 {SOLVE_NPROC} 进程）
   结果目录   : {RESULTS_DIR}
 """
